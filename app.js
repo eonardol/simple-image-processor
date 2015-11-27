@@ -1,9 +1,11 @@
+var Promise = require('promise');
 var url = require("url");
 var express = require('express');
 var path = require('path');
 var fs = require('fs');
 var request = require('request');
 var mkdirp = require('mkdirp');
+var sharp = require('sharp');
 
 
 
@@ -20,34 +22,34 @@ app.get('/resize', function(req, res) {
   }
   console.log("resize con width='"+width+"' per srcUrl=" + srcUrl);
 
-  var cacheDst = getCacheDestination(srcUrl);
-  var fullPath = cacheDst.directory + "/" + cacheDst.filename;
+  var cacheDst = getCacheDestination(srcUrl, width);
 
 
-  path.exists(fullPath, function(exists) {
+  path.exists(cacheDst.getOriginalFullPath(), function(exists) {
     if (exists) {
-      res.sendFile(fullPath, function(err) {
-        if (err) {
-          console.log(err);
-          res.status(err.status).end();
-        } else {
-          console.log('File restituito con successo');
+      // file già presente in cache, verifico se è presente anche quello elaborato
+      console.log("file originale già presente");
+      path.exists(cacheDst.getResizedFullPath(), function(resizedExists) {
+        if (resizedExists) {
+          console.log("file elaborato già presente");
+          serveFile(res, cacheDst);
+        }
+        else {
+          // calcolare e servire l'elaborato
+          console.log("file elaborato NON presente");
+          calculateAndServeFile(res, cacheDst, width);
         }
       });
 
     }
     else {
-      download(srcUrl, fullPath, function() {
-        res.sendFile(fullPath, function(err) {
-          if (err) {
-            console.log(err);
-            res.status(err.status).end();
-          } else {
-            console.log('File restituito con successo');
-          }
-        });
+      // procedo con il download
+      console.log("file originale NON presente");
+      download(srcUrl, cacheDst, function() {
+         // calcolare e servire l'elaborato
+         calculateAndServeFile(res, cacheDst, width);
       }, function () {
-        console.log("Download fallito");
+        console.log("download file originale fallito");
         res.sendStatus(404);
       });
     }
@@ -62,14 +64,18 @@ var server = app.listen(3000, function() {
 });
 
 
-var getCacheDestination = function(srcUrl) {
+var getCacheDestination = function(srcUrl, width) {
   var urlParsed = url.parse(srcUrl);
   var hostArr = urlParsed.hostname.split(".");
   if (urlParsed.port)
     hostArr.push(urlParsed.port);
 
   var pathnameArr = urlParsed.pathname.substr(1).split("/");
-  var filename = pathnameArr.pop();
+  var originalFilename = pathnameArr.pop();
+  var resizedFilename = originalFilename + "_" + width;
+  if (originalFilename.lastIndexOf(".")!=-1){
+    resizedFilename = originalFilename.substr(0, originalFilename.lastIndexOf(".")) + "_" + width + originalFilename.substr(originalFilename.lastIndexOf("."));
+  }
 
   var queryArr = new Array();
   if (urlParsed.query) {
@@ -81,11 +87,14 @@ var getCacheDestination = function(srcUrl) {
 
   return {
     "directory": __dirname + "/cache/" + hostArr.concat(pathnameArr).concat(queryArr).join("/"),
-    "filename": filename,
+    "originalFilename": originalFilename,
+    "resizedFilename": resizedFilename,
+    "getOriginalFullPath": function(){return this.directory + "/" + this.originalFilename},
+    "getResizedFullPath": function(){return this.directory + "/" + this.resizedFilename}
   }
 }
 
-var download = function(uri, filename, callbackSuccess, callbackError) {
+var download = function(uri, cacheDst, callbackSuccess, callbackError) {
   request.head(uri, function(err, res, body) {
     if (!res) {
       callbackError();
@@ -101,8 +110,31 @@ var download = function(uri, filename, callbackSuccess, callbackError) {
         callbackError();
       } else {
         // OK
-        request(uri).pipe(fs.createWriteStream(filename)).on('close', callbackSuccess);
+        request(uri).pipe(fs.createWriteStream(cacheDst.getOriginalFullPath())).on('close', callbackSuccess);
       }
     });
   });
 };
+
+var serveFile = function(res, cacheDst){
+  console.log("resituisco file elaborato a client");
+  res.sendFile(cacheDst.getResizedFullPath(), function(err) {
+    if (err) {
+      console.log(err);
+      res.status(err.status).end();
+    } else {
+      console.log('File restituito con successo');
+    }
+  });
+}
+
+var calculateAndServeFile = function(res, cacheDst, width){
+  console.log("ridimensiono immagine a " + width);
+  sharp(cacheDst.getOriginalFullPath())
+  .resize(width*1, null)
+  .toFile(cacheDst.getResizedFullPath(), function(err) {
+    console.log("ridimensionamento avvenuto")
+    if (!err) serveFile(res, cacheDst);
+    else res.sendStatus(505);
+  });
+}
