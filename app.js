@@ -16,13 +16,17 @@ app.use(express.static('cache'));
 app.get('/resize', function(req, res) {
   var srcUrl = req.query.srcUrl;
   var width = req.query.width;
-  if (!srcUrl || !width || isNaN(width)) {
+  var height = req.query.height;
+  if (!srcUrl || (!width && !height)) {
     res.sendStatus(400);
     return;
   }
-  console.log("resize con width='"+width+"' per srcUrl=" + srcUrl);
+  if (!width) width=null;
+  if (!height) height=null;
 
-  var cacheDst = getCacheDestination(srcUrl, width);
+  console.log("resize con width='"+width+"', height='"+height+"' per srcUrl=" + srcUrl);
+
+  var cacheDst = getCacheDestination(srcUrl, width, height);
 
 
   path.exists(cacheDst.getOriginalFullPath(), function(exists) {
@@ -37,7 +41,7 @@ app.get('/resize', function(req, res) {
         else {
           // calcolare e servire l'elaborato
           console.log("file elaborato NON presente");
-          calculateAndServeFile(res, cacheDst, width);
+          calculateAndServeFile(res, cacheDst, width, height);
         }
       });
 
@@ -47,7 +51,7 @@ app.get('/resize', function(req, res) {
       console.log("file originale NON presente");
       download(srcUrl, cacheDst, function() {
          // calcolare e servire l'elaborato
-         calculateAndServeFile(res, cacheDst, width);
+         calculateAndServeFile(res, cacheDst, width, height);
       }, function () {
         console.log("download file originale fallito");
         res.sendStatus(404);
@@ -64,7 +68,7 @@ var server = app.listen(3000, function() {
 });
 
 
-var getCacheDestination = function(srcUrl, width) {
+var getCacheDestination = function(srcUrl, width, height) {
   var urlParsed = url.parse(srcUrl);
   var hostArr = urlParsed.hostname.split(".");
   if (urlParsed.port)
@@ -72,9 +76,9 @@ var getCacheDestination = function(srcUrl, width) {
 
   var pathnameArr = urlParsed.pathname.substr(1).split("/");
   var originalFilename = pathnameArr.pop();
-  var resizedFilename = originalFilename + "_" + width;
+  var resizedFilename = originalFilename + "_" + width + "x" + height;
   if (originalFilename.lastIndexOf(".")!=-1){
-    resizedFilename = originalFilename.substr(0, originalFilename.lastIndexOf(".")) + "_" + width + originalFilename.substr(originalFilename.lastIndexOf("."));
+    resizedFilename = originalFilename.substr(0, originalFilename.lastIndexOf(".")) + "_" + width + "x" + height + originalFilename.substr(originalFilename.lastIndexOf("."));
   }
 
   var queryArr = new Array();
@@ -128,10 +132,10 @@ var serveFile = function(res, cacheDst){
   });
 }
 
-var calculateAndServeFile = function(res, cacheDst, width){
-  console.log("ridimensiono immagine a " + width);
+var calculateAndServeFile = function(res, cacheDst, width, height){
+  console.log("ridimensiono immagine a " + width + "x" + height);
   sharp(cacheDst.getOriginalFullPath())
-  .resize(width*1, null)
+  .resize(width*1, height*1)
   .toFile(cacheDst.getResizedFullPath(), function(err) {
     console.log("ridimensionamento avvenuto")
     if (!err) serveFile(res, cacheDst);
