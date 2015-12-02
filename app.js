@@ -9,12 +9,17 @@ var app = express();
 
 app.use(express.static('cache'));
 
-app.get('/resize', function(req, res) {
+app.get('/getimage', function(req, res) {
+  var comName = req.query.comName;
   var srcUrl = req.query.srcUrl;
   var width = req.query.width;
   var height = req.query.height;
-  if (!srcUrl || (!width && !height) || (width && isNaN(width)) || (height && isNaN(height))) {
+  if (!comName || !srcUrl || (!width && !height) || (width && isNaN(width)) || (height && isNaN(height))) {
     res.status(400).send("input parameters not valid!");
+    return;
+  }
+  if (comName != "resize"){
+    res.status(400).send("comName '"+comName+"' not supported!");
     return;
   }
   // normalize undefined ==> null
