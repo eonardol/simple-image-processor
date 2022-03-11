@@ -11,6 +11,7 @@ Simple webapp to resize image via [sharp nodejs module](https://github.com/lovel
 	node app.js
 
 
+
 ## Example
 
 	http://localhost:3000/getimage?comName=resize&width=300&srcUrl=http://cdn.akc.org/akcdoglovers/Pug_hero.jpg
